@@ -131,6 +131,7 @@ export default class WorkerPit<Input, Result> {
 
     clean(): void {
         for (let i = 0; i < this.freeWorkers.length; i += 1) {
+            if (this.workers.length <= this.minWorkers) return;
             if (Date.now() - (this.freeWorkers[i] as PitWorker<Input, Result>).lastUsed > this.workerTimeout) {
                 i -= 1;
                 this.deleteWorker();

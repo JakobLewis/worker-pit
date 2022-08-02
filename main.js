@@ -96,6 +96,8 @@ class WorkerPit {
     }
     clean() {
         for (let i = 0; i < this.freeWorkers.length; i += 1) {
+            if (this.workers.length <= this.minWorkers)
+                return;
             if (Date.now() - this.freeWorkers[i].lastUsed > this.workerTimeout) {
                 i -= 1;
                 this.deleteWorker();
