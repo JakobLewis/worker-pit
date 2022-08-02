@@ -18,18 +18,17 @@ interface PitEvents<Input, Result> extends EventEmitter {
     on(event: 'saturated', listener: () => void): this;
     on(event: 'workComplete', listener: () => void): this;
     on(event: 'workerCreated', listener: (worker: PitWorker<Input, Result>) => void): this;
-    on(event: 'empty', listener: () => void): void;
     emit(event: 'idle'): boolean;
     emit(event: 'saturated'): boolean;
     emit(event: 'workComplete'): boolean;
     emit(event: 'workerCreated', worker: PitWorker<Input, Result>): boolean;
-    emit(event: 'empty'): boolean;
 }
 /**
  *
  */
 export declare class PitWorker<Input, Result> extends Worker {
     enclosedPromise: DeferredPromise<Input, Result | null> | null;
+    lastUsed: number;
     stopFlagged: boolean;
     errorTrace: Error | null;
     exitCode: number | null;
@@ -44,11 +43,13 @@ export default class WorkerPit<Input, Result> {
     workPath: string;
     minWorkers: number;
     maxWorkers: number;
-    constructor(workPath: string, maxWorkers: number, minWorkers?: number);
+    workerTimeout: number;
+    constructor(workPath: string, maxWorkers: number, minWorkers?: number, workerTimeout?: number, cleaningPeriod?: number);
     get workerCount(): number;
     get freeWorkerCount(): number;
     private addWorker;
     private deleteWorker;
+    clean(): void;
     poll(): void;
     throwWork(data: Input): Promise<Result | null>;
 }

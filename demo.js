@@ -7,8 +7,6 @@ const main_1 = __importDefault(require("./main"));
 const worker_threads_1 = require("worker_threads");
 if (worker_threads_1.isMainThread) {
     const pit = new main_1.default('./demo.js', 10);
-    // Shut the pit down once it has completed all work
-    pit.events.on('empty', () => pit.minWorkers = 0);
     // Simulate two workloads.
     for (let i = 1; i < 10; i += 1) {
         (async () => {

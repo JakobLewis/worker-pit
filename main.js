@@ -8,6 +8,7 @@ const worker_threads_1 = require("worker_threads");
  */
 class PitWorker extends worker_threads_1.Worker {
     enclosedPromise = null;
+    lastUsed = Date.now();
     stopFlagged = false;
     errorTrace = null;
     exitCode = null;
@@ -18,6 +19,7 @@ class PitWorker extends worker_threads_1.Worker {
                 throw new Error('Worker thread returned data with no waiting Promise.');
             this.enclosedPromise.resolve(result);
             this.enclosedPromise = null;
+            this.lastUsed = Date.now();
         });
         this.addListener('error', (err) => this.errorTrace = err);
         this.addListener('exit', (code) => {
@@ -55,10 +57,13 @@ class WorkerPit {
     workPath;
     minWorkers;
     maxWorkers;
-    constructor(workPath, maxWorkers, minWorkers = 1) {
+    workerTimeout;
+    constructor(workPath, maxWorkers, minWorkers = 1, workerTimeout = 3000, cleaningPeriod = 3000) {
         this.workPath = workPath;
         this.maxWorkers = maxWorkers;
         this.minWorkers = minWorkers;
+        this.workerTimeout = workerTimeout;
+        setInterval(() => this.clean(), cleaningPeriod).unref();
         this.events.on('workComplete', () => this.poll());
         this.poll();
     }
@@ -89,15 +94,17 @@ class WorkerPit {
         worker.stopFlagged = true;
         worker.terminate();
     }
-    poll() {
-        //const firstState = `${this.workPile.length} ${this.freeWorkers.length} ${this.workers.length}`;
-        if (this.workPile.length == 0 && this.freeWorkerCount != 0) {
-            this.events.emit('idle');
-            if (this.minWorkers === this.freeWorkers.length && this.freeWorkers.length === this.workers.length)
-                this.events.emit('empty');
-            if (this.minWorkers < this.workers.length)
+    clean() {
+        for (let i = 0; i < this.freeWorkers.length; i += 1) {
+            if (Date.now() - this.freeWorkers[i].lastUsed > this.workerTimeout) {
+                i -= 1;
                 this.deleteWorker();
+            }
         }
+    }
+    poll() {
+        if (this.workPile.length == 0 && this.freeWorkerCount != 0)
+            this.events.emit('idle');
         else if (this.workPile.length != 0 && this.freeWorkers.length == 0) {
             this.events.emit('saturated');
             if (this.maxWorkers > this.workers.length)
@@ -111,7 +118,6 @@ class WorkerPit {
                 worker.giveWork(work);
             }
         }
-        //console.log(`${firstState} => ${this.workPile.length} ${this.freeWorkers.length} ${this.workers.length}`);
     }
     throwWork(data) {
         return new Promise((resolve, reject) => {
