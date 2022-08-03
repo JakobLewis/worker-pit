@@ -14,18 +14,13 @@ interface DeferredPromise<Input, Result> {
  * Defining the values of WorkerPit events for typechecking.
  */
 interface PitEvents<Input, Result> extends EventEmitter {
-    on(event: 'idle', listener: () => void): this;
-    on(event: 'saturated', listener: () => void): this;
+    on(event: 'workDispatched', listener: () => void): this;
     on(event: 'workComplete', listener: () => void): this;
     on(event: 'workerCreated', listener: (worker: PitWorker<Input, Result>) => void): this;
-    emit(event: 'idle'): boolean;
-    emit(event: 'saturated'): boolean;
+    emit(event: 'workDispatched'): boolean;
     emit(event: 'workComplete'): boolean;
     emit(event: 'workerCreated', worker: PitWorker<Input, Result>): boolean;
 }
-/**
- *
- */
 export declare class PitWorker<Input, Result> extends Worker {
     enclosedPromise: DeferredPromise<Input, Result | null> | null;
     lastUsed: number;
@@ -47,6 +42,7 @@ export default class WorkerPit<Input, Result> {
     constructor(workPath: string, maxWorkers: number, minWorkers?: number, workerTimeout?: number, cleaningPeriod?: number);
     get workerCount(): number;
     get freeWorkerCount(): number;
+    get utilisation(): number;
     private addWorker;
     private deleteWorker;
     clean(): void;

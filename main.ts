@@ -14,20 +14,15 @@ interface DeferredPromise<Input, Result> {
  * Defining the values of WorkerPit events for typechecking.
  */
 interface PitEvents<Input, Result> extends EventEmitter {
-    on(event: 'idle', listener: () => void): this;
-    on(event: 'saturated', listener: () => void): this;
+    on(event: 'workDispatched', listener: () => void): this;
     on(event: 'workComplete', listener: () => void): this;
     on(event: 'workerCreated', listener: (worker: PitWorker<Input, Result>) => void): this;
 
-    emit(event: 'idle'): boolean;
-    emit(event: 'saturated'): boolean;
+    emit(event: 'workDispatched'): boolean;
     emit(event: 'workComplete'): boolean;
     emit(event: 'workerCreated', worker: PitWorker<Input, Result>): boolean;
 }
 
-/**
- * 
- */
 export class PitWorker<Input, Result> extends Worker {
     enclosedPromise: DeferredPromise<Input, Result | null> | null = null;
     lastUsed: number = Date.now();
@@ -37,12 +32,14 @@ export class PitWorker<Input, Result> extends Worker {
 
     constructor(filename: string, options?: WorkerOptions) {
         super(filename, options);
+        this.unref();
 
         this.addListener('message', (result) => {
             if (this.enclosedPromise == null) throw new Error('Worker thread returned data with no waiting Promise.');
             this.enclosedPromise.resolve(result);
             this.enclosedPromise = null;
             this.lastUsed = Date.now();
+            this.unref();
         });
 
         this.addListener('error', (err) => this.errorTrace = err);
@@ -59,12 +56,12 @@ export class PitWorker<Input, Result> extends Worker {
                 else throw this.errorTrace;
             }
         });
-
     }
 
     giveWork(work: DeferredPromise<Input, Result | null>): void {
         if (this.enclosedPromise != null) throw Error('Busy PitWorker cannot take more work.');
         this.enclosedPromise = work;
+        this.ref(); // Ensure the main thread does not exit.
         this.postMessage(work.data);
     }
 }
@@ -74,7 +71,6 @@ export default class WorkerPit<Input, Result> {
     private freeWorkers: PitWorker<Input, Result>[] = [];
 
     workPile: DeferredPromise<Input, Result | null>[] = [];
-
     events: PitEvents<Input, Result> = new EventEmitter();
 
     // Configuration
@@ -95,7 +91,7 @@ export default class WorkerPit<Input, Result> {
 
         setInterval(() => this.clean(), cleaningPeriod).unref();
 
-        this.events.on('workComplete', () => this.poll());
+        this.events.prependListener('workComplete', () => this.poll());
         this.poll();
     }
 
@@ -105,6 +101,10 @@ export default class WorkerPit<Input, Result> {
 
     get freeWorkerCount(): number {
         return this.freeWorkers.length;
+    }
+
+    get utilisation(): number {
+        return (1 - (this.freeWorkers.length / this.workers.length));
     }
 
     private addWorker(): void {
@@ -140,17 +140,17 @@ export default class WorkerPit<Input, Result> {
     }
 
     poll(): void {
-        if (this.workPile.length == 0 && this.freeWorkerCount != 0) this.events.emit('idle');
-        else if (this.workPile.length != 0 && this.freeWorkers.length == 0) {
-            this.events.emit('saturated');
-            if (this.maxWorkers > this.workers.length) this.addWorker();
-        } else {
+        if (this.workPile.length == 0) return;
+
+        if (this.freeWorkers.length == 0 && this.maxWorkers > this.workers.length) this.addWorker();
+        else if (this.freeWorkers.length > 0) {
             const repetitions = Math.min(this.workPile.length, this.freeWorkers.length);
             for (let i = 0; i < repetitions; i += 1) {
                 const work = (this.workPile.shift() as DeferredPromise<Input, Result | null>);
                 const worker = (this.freeWorkers.pop() as PitWorker<Input, Result>);
                 worker.giveWork(work);
             }
+            this.events.emit("workDispatched");
         }
     }
 

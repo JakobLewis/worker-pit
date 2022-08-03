@@ -3,9 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PitWorker = void 0;
 const stream_1 = require("stream");
 const worker_threads_1 = require("worker_threads");
-/**
- *
- */
 class PitWorker extends worker_threads_1.Worker {
     enclosedPromise = null;
     lastUsed = Date.now();
@@ -14,12 +11,14 @@ class PitWorker extends worker_threads_1.Worker {
     exitCode = null;
     constructor(filename, options) {
         super(filename, options);
+        this.unref();
         this.addListener('message', (result) => {
             if (this.enclosedPromise == null)
                 throw new Error('Worker thread returned data with no waiting Promise.');
             this.enclosedPromise.resolve(result);
             this.enclosedPromise = null;
             this.lastUsed = Date.now();
+            this.unref();
         });
         this.addListener('error', (err) => this.errorTrace = err);
         this.addListener('exit', (code) => {
@@ -44,6 +43,7 @@ class PitWorker extends worker_threads_1.Worker {
         if (this.enclosedPromise != null)
             throw Error('Busy PitWorker cannot take more work.');
         this.enclosedPromise = work;
+        this.ref(); // Ensure the main thread does not exit.
         this.postMessage(work.data);
     }
 }
@@ -64,7 +64,7 @@ class WorkerPit {
         this.minWorkers = minWorkers;
         this.workerTimeout = workerTimeout;
         setInterval(() => this.clean(), cleaningPeriod).unref();
-        this.events.on('workComplete', () => this.poll());
+        this.events.prependListener('workComplete', () => this.poll());
         this.poll();
     }
     get workerCount() {
@@ -72,6 +72,9 @@ class WorkerPit {
     }
     get freeWorkerCount() {
         return this.freeWorkers.length;
+    }
+    get utilisation() {
+        return (1 - (this.freeWorkers.length / this.workers.length));
     }
     addWorker() {
         const worker = new PitWorker(this.workPath);
@@ -105,23 +108,22 @@ class WorkerPit {
         }
     }
     poll() {
-        if (this.workPile.length == 0 && this.freeWorkerCount != 0)
-            this.events.emit('idle');
-        else if (this.workPile.length != 0 && this.freeWorkers.length == 0) {
-            this.events.emit('saturated');
-            if (this.maxWorkers > this.workers.length)
-                this.addWorker();
-        }
-        else {
+        if (this.workPile.length == 0)
+            return;
+        if (this.freeWorkers.length == 0 && this.maxWorkers > this.workers.length)
+            this.addWorker();
+        else if (this.freeWorkers.length > 0) {
             const repetitions = Math.min(this.workPile.length, this.freeWorkers.length);
             for (let i = 0; i < repetitions; i += 1) {
                 const work = this.workPile.shift();
                 const worker = this.freeWorkers.pop();
                 worker.giveWork(work);
             }
+            this.events.emit("workDispatched");
         }
     }
     throwWork(data) {
+        console.log('recieved work');
         return new Promise((resolve, reject) => {
             this.workPile.push({ resolve, reject, data });
             this.poll();
