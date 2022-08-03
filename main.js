@@ -75,7 +75,7 @@ class WorkerPit {
         return this.freeWorkers.length + this.bootingWorkers;
     }
     get utilisation() {
-        return (1 - (this.freeWorkers.length / this.maxWorkers));
+        return (1 - (this.freeWorkerCount / this.maxWorkers));
     }
     addWorker() {
         const worker = new PitWorker(this.workPath);

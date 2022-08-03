@@ -106,7 +106,7 @@ export default class WorkerPit<Input, Result> {
     }
 
     get utilisation(): number {
-        return (1 - (this.freeWorkers.length / this.maxWorkers));
+        return (1 - (this.freeWorkerCount / this.maxWorkers));
     }
 
     private addWorker(): void {
