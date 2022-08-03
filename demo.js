@@ -6,7 +6,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const main_1 = __importDefault(require("./main"));
 const worker_threads_1 = require("worker_threads");
 if (worker_threads_1.isMainThread) {
-    const pit = new main_1.default('./demo.js', 10);
+    const pit = new main_1.default('./demo.js', 7);
+    let lastUtilisation = 0.0;
+    function logUtilisation() {
+        let u = pit.utilisation;
+        if (u == lastUtilisation)
+            return;
+        lastUtilisation = u;
+        // Note that utilisation is 1-(freeWorkerCount/maxWorkers), NOT 1-(freeWorkerCount/workerCount).
+        console.log(`%${Math.round(u * 10000) / 100}, ${(pit.workerCount - pit.freeWorkerCount)}/${pit.workerCount} workers in use.`);
+    }
+    pit.events.on('workDispatched', logUtilisation);
+    pit.events.on('workComplete', logUtilisation);
     // Simulate two workloads.
     for (let i = 1; i < 10; i += 1) {
         (async () => {
