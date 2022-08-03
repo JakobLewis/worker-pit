@@ -51,6 +51,7 @@ exports.PitWorker = PitWorker;
 class WorkerPit {
     workers = [];
     freeWorkers = [];
+    bootingWorkers = 0;
     workPile = [];
     events = new stream_1.EventEmitter();
     // Configuration
@@ -71,23 +72,25 @@ class WorkerPit {
         return this.workers.length;
     }
     get freeWorkerCount() {
-        return this.freeWorkers.length;
+        return this.freeWorkers.length + this.bootingWorkers;
     }
     get utilisation() {
         return (1 - (this.freeWorkers.length / this.maxWorkers));
     }
     addWorker() {
         const worker = new PitWorker(this.workPath);
-        this.events.emit('workerCreated', worker);
         worker.on('message', () => {
             this.freeWorkers.push(worker);
             this.events.emit('workComplete');
         });
         worker.once('online', () => {
             this.freeWorkers.push(worker);
+            this.bootingWorkers -= 1;
             this.poll();
         });
         this.workers.push(worker);
+        this.bootingWorkers += 1;
+        this.events.emit('workerCreated', worker);
     }
     deleteWorker() {
         const worker = this.freeWorkers.pop();
@@ -108,11 +111,9 @@ class WorkerPit {
         }
     }
     poll() {
-        if (this.workPile.length == 0)
-            return;
-        if (this.freeWorkers.length == 0 && this.maxWorkers > this.workers.length)
+        if (this.freeWorkerCount < this.workPile.length && this.maxWorkers > this.workers.length)
             this.addWorker();
-        else if (this.freeWorkers.length > 0) {
+        if (this.freeWorkers.length > 0 && this.workPile.length > 0) {
             const repetitions = Math.min(this.workPile.length, this.freeWorkers.length);
             for (let i = 0; i < repetitions; i += 1) {
                 const work = this.workPile.shift();

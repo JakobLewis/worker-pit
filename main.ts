@@ -69,6 +69,7 @@ export class PitWorker<Input, Result> extends Worker {
 export default class WorkerPit<Input, Result> {
     private workers: PitWorker<Input, Result>[] = [];
     private freeWorkers: PitWorker<Input, Result>[] = [];
+    private bootingWorkers: number = 0;
 
     workPile: DeferredPromise<Input, Result | null>[] = [];
     events: PitEvents<Input, Result> = new EventEmitter();
@@ -92,6 +93,7 @@ export default class WorkerPit<Input, Result> {
         setInterval(() => this.clean(), cleaningPeriod).unref();
 
         this.events.prependListener('workComplete', () => this.poll());
+
         this.poll();
     }
 
@@ -100,7 +102,7 @@ export default class WorkerPit<Input, Result> {
     }
 
     get freeWorkerCount(): number {
-        return this.freeWorkers.length;
+        return this.freeWorkers.length + this.bootingWorkers;
     }
 
     get utilisation(): number {
@@ -109,16 +111,18 @@ export default class WorkerPit<Input, Result> {
 
     private addWorker(): void {
         const worker: PitWorker<Input, Result> = new PitWorker(this.workPath);
-        this.events.emit('workerCreated', worker);
         worker.on('message', () => {
             this.freeWorkers.push(worker);
             this.events.emit('workComplete');
         });
         worker.once('online', () => {
             this.freeWorkers.push(worker);
+            this.bootingWorkers -= 1;
             this.poll();
         });
         this.workers.push(worker);
+        this.bootingWorkers += 1;
+        this.events.emit('workerCreated', worker);
     }
 
     private deleteWorker(): void {
@@ -140,10 +144,8 @@ export default class WorkerPit<Input, Result> {
     }
 
     poll(): void {
-        if (this.workPile.length == 0) return;
-
-        if (this.freeWorkers.length == 0 && this.maxWorkers > this.workers.length) this.addWorker();
-        else if (this.freeWorkers.length > 0) {
+        if (this.freeWorkerCount < this.workPile.length && this.maxWorkers > this.workers.length) this.addWorker();
+        if (this.freeWorkers.length > 0 && this.workPile.length > 0) {
             const repetitions = Math.min(this.workPile.length, this.freeWorkers.length);
             for (let i = 0; i < repetitions; i += 1) {
                 const work = (this.workPile.shift() as DeferredPromise<Input, Result | null>);

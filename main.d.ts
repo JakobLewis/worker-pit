@@ -33,6 +33,7 @@ export declare class PitWorker<Input, Result> extends Worker {
 export default class WorkerPit<Input, Result> {
     private workers;
     private freeWorkers;
+    private bootingWorkers;
     workPile: DeferredPromise<Input, Result | null>[];
     events: PitEvents<Input, Result>;
     workPath: string;
