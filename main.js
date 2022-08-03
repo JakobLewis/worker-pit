@@ -74,7 +74,7 @@ class WorkerPit {
         return this.freeWorkers.length;
     }
     get utilisation() {
-        return (1 - (this.freeWorkers.length / this.workers.length));
+        return (1 - (this.freeWorkers.length / this.maxWorkers));
     }
     addWorker() {
         const worker = new PitWorker(this.workPath);
@@ -123,7 +123,6 @@ class WorkerPit {
         }
     }
     throwWork(data) {
-        console.log('recieved work');
         return new Promise((resolve, reject) => {
             this.workPile.push({ resolve, reject, data });
             this.poll();
